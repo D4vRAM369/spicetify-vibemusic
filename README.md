@@ -138,6 +138,8 @@ node --test   # pruebas de la lógica (no necesitan Spotify)
 
 ## English summary
 
+<img src="assets/social-preview-EN.png" alt="Vibemusic — describe what you want to hear and get a private Spotify playlist with real tracks" width="100%" />
+
 **Vibemusic** is an unofficial [Spicetify](https://spicetify.app) extension. Describe what you want to hear in plain language ("15 Spanish indie rock songs from the 2000s for a road trip") and it creates a **private** Spotify playlist with **real catalog tracks**. It searches Spotify first and lets an AI pick among real candidates, so it doesn't invent songs. It respects era, language, vocals/instrumental, artist variety and original versions. It works with **free** API keys from Google Gemini, Groq, OpenRouter or any OpenAI-compatible endpoint, with automatic fallback between them.
 
 Install it from the Spicetify Marketplace (once published) or manually: put `vibemusic.js` in your Spicetify `Extensions` folder, then run `spicetify config extensions vibemusic.js` and `spicetify apply`. Note that API keys live in Spotify's local storage, which other Spicetify extensions can read: use free or spending-capped keys. The UI is currently in Spanish.
