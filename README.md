@@ -1,145 +1,137 @@
 <div align="center">
-  <img src="assets/social-preview.png" alt="Vibemusic — Tu música en tus palabras para Spotify y Spicetify" width="100%" />
+  <img src="assets/social-preview-EN.png" alt="Vibemusic — Describe what you want to hear and create a private Spotify playlist with real tracks" width="100%" />
   <br /><br />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-MIT-blue.svg" alt="Licencia: MIT" /></a>
-  <img src="https://img.shields.io/badge/Spicetify-extensi%C3%B3n-1db954" alt="Spicetify extensión" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/Spicetify-extension-1db954" alt="Spicetify extension" />
   <img src="https://img.shields.io/badge/tests-42%2F42%20passing-1db954" alt="Tests 42/42" />
 </div>
 
 # <img src="assets/icon.svg" width="28" height="28" valign="middle" alt="✨" /> Vibemusic
 
-**Describe lo que quieres escuchar con tus palabras y Vibemusic crea la playlist en tu Spotify, con canciones reales del catálogo.**
+<p align="center"><b>English</b> · <a href="README-ES.md">Español</a></p>
 
-![Vibemusic en Spotify](preview.png)
+**Describe what you want to hear in your own words and Vibemusic creates the playlist in your Spotify, using real catalog tracks.**
 
-> *English summary at the end.* · Extensión **no oficial** para [Spicetify](https://spicetify.app). No está afiliada a Spotify ni a Spicetify.
+![Vibemusic in Spotify](preview.png)
 
-## Qué hace
+> **Unofficial** extension for [Spicetify](https://spicetify.app). Not affiliated with Spotify or Spicetify. *(Note: the in-app modal UI is currently in Spanish, while prompts work in any language.)*
 
-Escribes algo como *"15 temas de indie rock español de los 2000 para un viaje en coche"* y Vibemusic:
+## What it does
 
-1. **Entiende la petición**: cantidad, género, época, idioma, con o sin voz, ambiente y artistas de referencia o a evitar.
-2. **Busca candidatas reales en Spotify** y deja que una IA elija entre ellas, para que no invente canciones que no existen.
-3. **Crea una playlist privada** y empieza a sonar. Antes de buscar te enseña qué ha entendido ("Entendido: 15 canciones · indie rock español · 2000–2009 · …").
+Type something like *"15 indie rock tracks from the 2000s for a late-night road trip"* and Vibemusic:
 
-## Características
+1. **Understands your request**: track count, genre, era/year range, language, vocal vs. instrumental, mood, reference artists, and excluded artists.
+2. **Searches Spotify for real candidate tracks first** (*catalog grounding*) and lets the AI pick from that verified pool, so it doesn't hallucinate non-existent songs.
+3. **Creates a private playlist** and starts playing it immediately. Before searching, it shows you what it understood (*"Entendido: 15 canciones · indie rock · 2000–2009 · …"*).
 
-- 🗣️ **Lenguaje natural**: "diez canciones tristes en inglés de los 90", "jazz sin voz para concentrarme", "electrónica tipo Bonobo, pero sin Bonobo".
-- 🎯 **Respeta lo que pides**: la época se filtra en el propio buscador de Spotify, y se descartan duplicados, versiones demo/acústicas/remix (salvo que las pidas) y el relleno de palabras clave ("Relaxing Music for Study…").
-- 🎨 **Variedad**: como mucho 2 canciones por artista, salvo que pidas "solo de X".
-- 🖱️ **Clic derecho**:
-  - en una canción o playlist → **"Vibemusic: más como esto"**;
-  - en una playlist creada por Vibemusic → **"Vibemusic: mostrar prompt de la lista"** (lee el historial local o directamente la descripción de la playlist en Spotify).
-- ✏️ **Ajustar y recientes**: retoca tu última playlist (*"más oscuro"*, *"sin remixes"*, conservado entre sesiones), reutiliza tus últimos prompts desde **🕘 Recientes** o cancela una búsqueda en marcha con **⏹ Cancelar**.
-- 🔒 **Privada por defecto**: la playlist no se publica en tu perfil.
-- 🆓 **Funciona con planes gratuitos** de Google Gemini, Groq u OpenRouter, o con cualquier API compatible con OpenAI (Mistral, Cerebras, Ollama…). Si un proveedor falla, prueba el siguiente.
+## Features
 
-## Requisitos
+- 🗣️ **Natural language**: *"10 sad songs in English from the 90s"*, *"instrumental jazz with no vocals to focus"*, *"electronic music like Bonobo, but without Bonobo"*.
+- 🎯 **Strict constraint matching**: year ranges are filtered directly in Spotify's search (`year:`), splitting multi-year ranges evenly so recent years don't drown out older ones. Duplicates, demo/acoustic/remix versions (unless requested), and keyword-stuffed filler (*"Relaxing Music for Study…"*) are automatically filtered out.
+- 🎨 **Artist variety**: capped at 2 tracks per artist by default (3 for 20+ track playlists), or unlimited when you ask specifically for tracks by a given artist.
+- 🖱️ **Right-click context menu**:
+  - on any track or playlist → **"Vibemusic: más como esto"** (*more like this*);
+  - on any playlist created by Vibemusic → **"Vibemusic: mostrar prompt de la lista"** (*show playlist prompt*, reading from local history or directly from the Spotify playlist description).
+- ✏️ **Refine & Recent prompts**: tweak your last generated playlist (*"darker"*, *"no remixes"*, persisted across sessions), reuse your latest prompts from **🕘 Recientes**, or abort an active generation anytime with **⏹ Cancelar**.
+- 🔒 **Private by default**: generated playlists are not published to your public profile.
+- 🆓 **Works with free API tiers** from Google Gemini, Groq, or OpenRouter, or any OpenAI-compatible server (Mistral, Cerebras, local Ollama / LM Studio…). If one provider fails or hits a rate limit, it automatically falls back to the next configured provider.
 
-- Spotify de escritorio con [Spicetify](https://spicetify.app/docs/advanced-usage/installation) instalado.
-- Una clave de API **gratuita** de al menos un proveedor (ver [Configuración](#configuración)).
+## Requirements
 
-Probado con Spotify 1.2.95 y Spicetify 2.46.7 en Linux. Si lo usas en otra versión o sistema y te funciona (o no), [cuéntalo](https://github.com/D4vRAM369/spicetify-vibemusic/issues).
+- Desktop Spotify with [Spicetify](https://spicetify.app/docs/advanced-usage/installation) installed.
+- A **free** API key from at least one provider (see [Configuration](#configuration)).
 
-## Instalación
+Tested with Spotify 1.2.95 and Spicetify 2.46.7 on Linux. If you use it on another version or OS and it works (or doesn't), [let us know](https://github.com/D4vRAM369/spicetify-vibemusic/issues).
 
-### Opción A — Spicetify Marketplace
+## Installation
 
-Busca **Vibemusic** en la pestaña *Marketplace → Extensions* e instálala. *(Disponible cuando se publique en el Marketplace.)*
+### Option A — Spicetify Marketplace
 
-### Opción B — Manual
+Search for **Vibemusic** under *Marketplace → Extensions* and click **Install**.
 
-1. Descarga [`vibemusic.js`](https://raw.githubusercontent.com/D4vRAM369/spicetify-vibemusic/main/vibemusic.js).
-2. Cópialo a la carpeta `Extensions` de Spicetify. Para saber dónde está en tu equipo:
+### Option B — Manual (CLI)
+
+1. Download [`vibemusic.js`](https://raw.githubusercontent.com/D4vRAM369/spicetify-vibemusic/main/vibemusic.js).
+2. Copy it into your Spicetify `Extensions` folder. To find its path on your machine:
 
    ```bash
    spicetify path userdata
    ```
 
-   Dentro de esa carpeta, entra en `Extensions` (créala si no existe) y pega el archivo.
+   Open that folder, go into `Extensions` (create it if it doesn't exist), and place `vibemusic.js` there.
 
-3. Actívala y aplica los cambios (Spotify se reiniciará):
+3. Enable the extension and apply changes (Spotify will restart):
 
    ```bash
    spicetify config extensions vibemusic.js
    spicetify apply
    ```
 
-Aparecerá un botón con una **nota musical ✨** en la barra superior de Spotify.
+A **musical note ✨** button will appear in Spotify's top bar.
 
-## Configuración
+## Configuration
 
-La primera vez se abre **⚙️ Ajustes de API**. Configura al menos un proveedor:
+The first time you click the button, **⚙️ Ajustes de API** (*API Settings*) opens. Configure at least one provider:
 
-| Proveedor | Dónde conseguir la clave gratis | Consejo |
+| Provider | Where to get a free key | Security tip |
 |---|---|---|
-| **Google Gemini** (recomendado: el que más sabe de música) | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Crea la clave en un proyecto **sin facturación**: así nunca puede generar cargos |
-| **Groq** (muy rápido) | [console.groq.com/keys](https://console.groq.com/keys) | Plan gratuito, sin tarjeta |
-| **OpenRouter** | [openrouter.ai/keys](https://openrouter.ai/keys) | Usa modelos 🆓 y ponle un límite de crédito a la clave |
-| **Personalizado** | Cualquier API compatible con OpenAI | Escribe la URL base (p. ej. `https://api.mistral.ai/v1`) |
+| **Google Gemini** *(recommended: best music knowledge)* | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Create the key in a project **without billing enabled** so it can never incur charges |
+| **Groq** *(ultra-fast)* | [console.groq.com/keys](https://console.groq.com/keys) | Free tier, no credit card required |
+| **OpenRouter** | [openrouter.ai/keys](https://openrouter.ai/keys) | Pick 🆓 models and set a credit limit on the key |
+| **Custom (Personalizado)** | Any OpenAI-compatible API | Enter the base URL (e.g. `https://api.mistral.ai/v1` or `http://localhost:11434/v1` for Ollama) |
 
-1. Pega la clave, elige el modelo en el desplegable y pulsa **🔌 Probar conexión**.
-2. Elige el **proveedor principal**. Los demás que configures sirven de respaldo automático.
-3. **💾 Guardar ajustes**.
+1. Paste your key, select a model from the dropdown, and click **🔌 Probar conexión** (*Test connection*).
+2. Choose your **primary provider**. Any other configured providers act as automatic fallbacks.
+3. Click **💾 Guardar ajustes** (*Save settings*).
 
-## Uso
+## Usage
 
-1. Pulsa el botón ✨ de la barra superior.
-2. Escribe lo que quieres escuchar, o pulsa uno de los ejemplos.
-3. Ajusta si quieres **Canciones** (cantidad), **Tipo** (con o sin voz) y **Curaduría** (joyas ocultas, equilibrado o clásicos). Un número escrito en el texto ("los 10 mejores…") tiene prioridad sobre el selector.
-4. **Crear y reproducir playlist**, o **Ctrl+Enter**.
+1. Click the ✨ button in the top bar.
+2. Type what you want to listen to, or click one of the example chips.
+3. Optionally adjust **Canciones** (track count), **Tipo** (vocal vs. instrumental), **Curaduría** (hidden gems, balanced, or classics), and **Solo descubrimientos** (exclude tracks already saved in your library). A number written in your text (*"top 10…"*) takes priority over the dropdown.
+4. Click **▶ Crear y reproducir playlist** (*Create & play playlist*) or press **Ctrl+Enter**.
 
-Si no se consigue la cantidad pedida, el modal dice cuántas se pidieron, encontraron y añadieron, y por qué se descartó cada una.
+If fewer tracks than requested are found, the modal reports how many were requested, found, and added, along with the reason each rejected candidate was filtered out.
 
-## Privacidad y seguridad
+## Privacy & security
 
-- **Lo que se envía:** el texto de tu petición, y los nombres de canciones candidatas, al proveedor de IA que configures. Nada más. Vibemusic no tiene servidor propio.
-- **Playlists privadas:** se crean fuera de tu perfil y como privadas. El prompt se guarda en la descripción solo si la playlist quedó privada.
-- **Claves:** se guardan en el almacenamiento local de Spotify en tu equipo. ⚠️ **Otras extensiones de Spicetify pueden leer ese almacenamiento**, y no hay forma técnica de impedirlo, porque todas se ejecutan en la misma página. Por eso usa **claves gratuitas o con límite de gasto**, una clave solo para Vibemusic, y revócala en la web del proveedor si sospechas de alguna extensión. En Ajustes tienes **🗑️ Borrar todas las claves**.
+- **What is sent:** only your prompt text and candidate track titles/artists are sent to the AI provider you configure. Nothing else. Vibemusic has no backend server of its own.
+- **Private playlists:** playlists are created outside your public profile and marked private. Your prompt is saved in the playlist description only when the playlist is confirmed private.
+- **API keys:** stored in Spotify's `localStorage` on your machine. ⚠️ **Other installed Spicetify extensions can read `localStorage`** because all extensions run in the same renderer context. Always use **free-tier or spending-capped keys**, create a dedicated key for Vibemusic, and revoke it on the provider's dashboard if you suspect another extension. You can wipe all stored keys anytime via **🗑️ Borrar todas las claves** in Settings.
 
-## Limitaciones conocidas
+## Known limitations
 
-- Usa **APIs internas** de Spotify y Spicetify (búsqueda GraphQL, `PlaylistAPI`, `RootlistAPI`…), que pueden cambiar con una actualización de Spotify.
-- Los **planes gratuitos** tienen límites por minuto y por día. Si se agotan, verás un aviso y se usará el siguiente proveedor configurado.
-- Spotify no indica si una canción tiene voz: en "sin voz" se confía en lo que declara la IA.
-- La calidad depende del modelo: Gemini conoce mejor la música de nicho que los modelos más pequeños.
+- Relies on **internal APIs** from Spotify and Spicetify (GraphQL search, `PlaylistAPI`, `RootlistAPI`…), which may change across Spotify updates.
+- **Free tiers** enforce per-minute and daily rate limits. If exhausted, Vibemusic notifies you and switches to your next configured fallback provider.
+- Spotify's catalog metadata does not expose a reliable vocal/instrumental flag: in instrumental mode, Vibemusic combines album/title heuristics with the AI's classification.
+- Curation quality depends on the model: Gemini 3.5 Flash knows niche and regional music significantly better than smaller models.
 
-## Problemas comunes
+## Troubleshooting
 
-| Síntoma | Solución |
+| Symptom | Solution |
 |---|---|
-| "el modelo … ya no existe" | El proveedor retiró ese modelo: elige otro en el desplegable |
-| "límite de uso alcanzado" / 429 | Cuota gratuita agotada: espera o configura otro proveedor de respaldo |
-| Ollama local no carga modelos | Arranca Ollama con `OLLAMA_ORIGINS=https://xpui.app.spotify.com` |
-| El botón no aparece | `spicetify config extensions` debe listar `vibemusic.js`; luego `spicetify apply` |
+| *"el modelo … ya no existe"* (model no longer exists) | The provider deprecated that model: pick another one from the dropdown |
+| *"límite de uso alcanzado"* / HTTP 429 | Free quota reached: wait a moment or configure a second fallback provider |
+| Local Ollama doesn't load models | Start Ollama with `OLLAMA_ORIGINS=https://xpui.app.spotify.com` |
+| Top-bar button doesn't appear | Ensure `spicetify config extensions` lists `vibemusic.js`, then run `spicetify apply` |
 
-## Desinstalar
+## Uninstall
 
 ```bash
 spicetify config extensions vibemusic.js-
 spicetify apply
 ```
 
-Después borra `vibemusic.js` de la carpeta `Extensions`. Las playlists creadas siguen en tu biblioteca.
+Then delete `vibemusic.js` from your `Extensions` folder. Playlists already created remain in your Spotify library.
 
-## Contribuir
+## Contributing
 
-Las sugerencias y correcciones son bienvenidas. Lee [CONTRIBUTING.md](CONTRIBUTING.md). Para errores, abre un [issue](https://github.com/D4vRAM369/spicetify-vibemusic/issues/new/choose) con la plantilla.
+Suggestions and bug fixes are welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md). To report a bug, open an [issue](https://github.com/D4vRAM369/spicetify-vibemusic/issues/new/choose) using the template.
 
 ```bash
-node --test   # pruebas de la lógica (no necesitan Spotify)
+node --test   # runs unit tests (no Spotify needed)
 ```
 
-## Licencia
+## License
 
 [MIT](LICENSE) © D4vRAM369
-
----
-
-## English summary
-
-<img src="assets/social-preview-EN.png" alt="Vibemusic — describe what you want to hear and get a private Spotify playlist with real tracks" width="100%" />
-
-**Vibemusic** is an unofficial [Spicetify](https://spicetify.app) extension. Describe what you want to hear in plain language ("15 Spanish indie rock songs from the 2000s for a road trip") and it creates a **private** Spotify playlist with **real catalog tracks**. It searches Spotify first and lets an AI pick among real candidates, so it doesn't invent songs. It respects era, language, vocals/instrumental, artist variety and original versions. It works with **free** API keys from Google Gemini, Groq, OpenRouter or any OpenAI-compatible endpoint, with automatic fallback between them.
-
-Install it from the Spicetify Marketplace (once published) or manually: put `vibemusic.js` in your Spicetify `Extensions` folder, then run `spicetify config extensions vibemusic.js` and `spicetify apply`. Note that API keys live in Spotify's local storage, which other Spicetify extensions can read: use free or spending-capped keys. The UI is currently in Spanish.
