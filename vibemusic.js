@@ -447,8 +447,9 @@
       // Prueba en vivo 2026-11-14: gemini-2.5-* ya no está disponible para cuentas nuevas (404);
       // 3.5-flash con razonamiento "low" dio la mejor selección en ~5 s (3.7/3.8 tardaban >25 s).
       extraBody: { reasoning_effort: "low" },
-      // Tareas sencillas (interpretar la petición): sin razonamiento, ~1-2 s en vez de ~5 s.
-      fastBody: { reasoning_effort: "none" },
+      // En parseIntent también usamos "low" (no "none"): con "none" el modelo no razona quién es el
+      // artista ni qué búsquedas (search_queries) convienen en Spotify.
+      fastBody: { reasoning_effort: "low" },
       note: "Gratis en aistudio.google.com/apikey. El que más sabe de música de nicho. 🛡️ Crea la clave en un proyecto SIN facturación: así nunca puede generar cargos."
     },
     groq: {
