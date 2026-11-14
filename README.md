@@ -1,9 +1,14 @@
-# ✨ Vibemusic
+<div align="center">
+  <img src="assets/social-preview.png" alt="Vibemusic — Tu música en tus palabras para Spotify y Spicetify" width="100%" />
+  <br /><br />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-MIT-blue.svg" alt="Licencia: MIT" /></a>
+  <img src="https://img.shields.io/badge/Spicetify-extensi%C3%B3n-1db954" alt="Spicetify extensión" />
+  <img src="https://img.shields.io/badge/tests-42%2F42%20passing-1db954" alt="Tests 42/42" />
+</div>
+
+# <img src="assets/icon.svg" width="28" height="28" valign="middle" alt="✨" /> Vibemusic
 
 **Describe lo que quieres escuchar con tus palabras y Vibemusic crea la playlist en tu Spotify, con canciones reales del catálogo.**
-
-[![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
-![Spicetify](https://img.shields.io/badge/Spicetify-extensión-1db954)
 
 ![Vibemusic en Spotify](preview.png)
 
@@ -24,8 +29,8 @@ Escribes algo como *"15 temas de indie rock español de los 2000 para un viaje e
 - 🎨 **Variedad**: como mucho 2 canciones por artista, salvo que pidas "solo de X".
 - 🖱️ **Clic derecho**:
   - en una canción o playlist → **"Vibemusic: más como esto"**;
-  - en una playlist creada por Vibemusic → **"Vibemusic: mostrar prompt de la lista"**.
-- ✏️ **Ajustar**: "más oscuro", "sin remixes"… crea una versión nueva de la última playlist.
+  - en una playlist creada por Vibemusic → **"Vibemusic: mostrar prompt de la lista"** (lee el historial local o directamente la descripción de la playlist en Spotify).
+- ✏️ **Ajustar y recientes**: retoca tu última playlist (*"más oscuro"*, *"sin remixes"*, conservado entre sesiones), reutiliza tus últimos prompts desde **🕘 Recientes** o cancela una búsqueda en marcha con **⏹ Cancelar**.
 - 🔒 **Privada por defecto**: la playlist no se publica en tu perfil.
 - 🆓 **Funciona con planes gratuitos** de Google Gemini, Groq u OpenRouter, o con cualquier API compatible con OpenAI (Mistral, Cerebras, Ollama…). Si un proveedor falla, prueba el siguiente.
 
@@ -122,7 +127,7 @@ Después borra `vibemusic.js` de la carpeta `Extensions`. Las playlists creadas 
 Las sugerencias y correcciones son bienvenidas. Lee [CONTRIBUTING.md](CONTRIBUTING.md). Para errores, abre un [issue](https://github.com/D4vRAM369/spicetify-vibemusic/issues/new/choose) con la plantilla.
 
 ```bash
-node --test test/   # pruebas de la lógica (no necesitan Spotify)
+node --test   # pruebas de la lógica (no necesitan Spotify)
 ```
 
 ## Licencia

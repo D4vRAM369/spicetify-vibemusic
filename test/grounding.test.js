@@ -217,3 +217,47 @@ test("redactSecrets: ninguna clave sale entera en mensajes de error", () => {
   assert.equal(Match.redactSecrets("Rate limit reached. Please try again in 12s."), "Rate limit reached. Please try again in 12s.");
   assert.equal(Match.redactSecrets(undefined), "");
 });
+
+test("parsePlaylistDescription: extrae prompt y entendido de la descripción de Spotify, o null si no es de Vibemusic", () => {
+  const full = Match.parsePlaylistDescription("Vibemusic · «indie español de los 2000» · Entendido: 15 canciones · indie");
+  assert.deepEqual(full, { prompt: "indie español de los 2000", understood: "Entendido: 15 canciones · indie" });
+  const onlyPrompt = Match.parsePlaylistDescription("Vibemusic · «jazz sin voz para estudiar»");
+  assert.deepEqual(onlyPrompt, { prompt: "jazz sin voz para estudiar", understood: "" });
+  assert.equal(Match.parsePlaylistDescription("Mis canciones favoritas de 2024"), null);
+  assert.equal(Match.parsePlaylistDescription(""), null);
+  assert.equal(Match.parsePlaylistDescription(null), null);
+});
+
+test("recentPrompts y shortChipLabel: ordena por fecha, quita prompts repetidos y recorta etiquetas largas", () => {
+  const hist = {
+    "spotify:playlist:1": { prompt: "jazz tranquilo", date: 100 },
+    "spotify:playlist:2": { prompt: "15 temas de indie rock español de los 2000 para un viaje largo", date: 300 },
+    "spotify:playlist:3": { prompt: "JAZZ TRANQUILO", date: 200 },
+    "spotify:playlist:4": { prompt: "", date: 400 },
+    "spotify:playlist:5": null
+  };
+  const out = Match.recentPrompts(hist, 5);
+  assert.deepEqual(out.map(x => x.uri), ["spotify:playlist:2", "spotify:playlist:3"]);
+  assert.ok(out[0].label.length <= 30 && out[0].label.endsWith("…"));
+  assert.equal(out[1].label, "JAZZ TRANQUILO");
+  assert.deepEqual(Match.recentPrompts(null), []);
+});
+
+test("resolveRequest: no acepta un idioma inventado por la IA si el texto no menciona idioma ni gentilicio", () => {
+  const generic = Match.resolveRequest(
+    "10 canciones de rock alternativo",
+    { count: 10, genre: "rock", instrumental: false, language: "pt", summary: "Rock alternativo, con voz, idioma portugués" },
+    { count: 10, trackType: "auto" }
+  );
+  assert.equal(generic.language, null);
+  assert.equal(Match.describe(generic), "10 canciones · rock · con voz");
+  assert.equal(Match.playlistName(generic.summary), "Vibemusic · Rock alternativo");
+
+  // Si el usuario SÍ menciona idioma o gentilicio, se respeta:
+  const es = Match.resolveRequest("indie rock español de los 2000", { language: "es" }, { count: 10, trackType: "auto" });
+  assert.equal(es.language, "es");
+  const en = Match.resolveRequest("canciones tristes en inglés de los 90", { language: "en" }, { count: 10, trackType: "auto" });
+  assert.equal(en.language, "en");
+  const pt = Match.resolveRequest("bossa nova en portugués", { language: "pt" }, { count: 10, trackType: "auto" });
+  assert.equal(pt.language, "pt");
+});

@@ -17,7 +17,7 @@
 3. Ejecuta las pruebas, que no necesitan Spotify:
 
    ```bash
-   node --test test/
+   node --test
    ```
 
 ## Normas

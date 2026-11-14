@@ -10,7 +10,7 @@
 (function VibemusicExtension() {
   // --------------------------------------------------------------------------
   // PASO 0: Funciones puras de validación y matching (sin Spicetify).
-  // Se exportan en Node para probarlas: `node --test test/`.
+  // Se exportan en Node para probarlas: `node --test`.
   // --------------------------------------------------------------------------
   const MAX_TRACKS = 50;
 
@@ -99,6 +99,19 @@
       return n >= 1 ? Math.min(n, MAX_TRACKS) : null;
     },
 
+    // ¿El texto del usuario menciona explícitamente un idioma o gentilicio? Evita que la IA deduzca
+    // un idioma falso por el nombre o apellido de un artista cuando el usuario no pidió ningún idioma.
+    MENTIONS_LANGUAGE: /\b(espa[ñn]ol\w*|castellano|ingl[eé]s|english|portugu[eé]s\w*|portuguese|franc[eé]s\w*|french|italiano\w*|italian|alem[aá]n\w*|german|japon[eé]s\w*|coreano\w*|catal[aá]n\w*|galego|gallego\w*|euskera|vasco|latino\w*|hispano\w*|anglo\w*|en\s+(?:espa[ñn]ol|ingl[eé]s|portugu[eé]s|franc[eé]s|italiano|alem[aá]n|catal[aá]n|gallego))\b/i,
+
+    // Limpia coletillas técnicas ("con voz", "idioma ...") si la IA las cuela en el summary.
+    cleanSummary(s) {
+      return String(s || "")
+        .replace(/[,·]?\s*\b(con voz|sin voz|idioma\s+[a-záéíóúñ]+)\b/gi, "")
+        .replace(/\s+/g, " ")
+        .replace(/[,·\s]+$/, "")
+        .trim();
+    },
+
     // Une lo que entendió la IA (intent) con los filtros del modal.
     // Prioridad: filtro explícito del modal > lo dicho en el texto > valor por defecto.
     resolveRequest(text, intent, ui) {
@@ -112,12 +125,13 @@
         : ui.trackType === "vocal" ? false
         : typeof i.instrumental === "boolean" ? i.instrumental : null;
       const list = v => (Array.isArray(v) ? v.filter(x => typeof x === "string" && x.trim()) : []);
+      const hasLang = Match.MENTIONS_LANGUAGE.test(String(text || ""));
       return {
         count,
         askFor: Match.askFor(count),
         range: era || Match.parseYearRange(text),
         instrumental,
-        language: instrumental || typeof i.language !== "string" ? null : i.language.toLowerCase().slice(0, 2),
+        language: instrumental || !hasLang || typeof i.language !== "string" ? null : i.language.toLowerCase().slice(0, 2),
         genre: typeof i.genre === "string" ? i.genre : "",
         mood: typeof i.mood === "string" ? i.mood : "",
         purpose: typeof i.purpose === "string" ? i.purpose : "",
@@ -127,7 +141,7 @@
         onlyArtists: i.only_artists === true && list(i.include_artists).length > 0,
         // Versiones alternativas (demo, acústica, directo, remix...) solo si el texto las pide.
         allowVersions: Match.ALT_VERSION.test(String(text || "")),
-        summary: typeof i.summary === "string" ? i.summary : ""
+        summary: typeof i.summary === "string" ? Match.cleanSummary(i.summary) : ""
       };
     },
 
@@ -184,6 +198,39 @@
       const full = understood ? `${base} · ${understood}` : base;
       if (full.length <= 300) return full;
       return base.length <= 300 ? base : base.slice(0, 298) + "…";
+    },
+
+    // Extrae { prompt, understood } de la descripción de una playlist de Spotify si fue creada por Vibemusic.
+    // Sirve de respaldo cuando la playlist no está en localStorage (otro PC o caché borrada).
+    parsePlaylistDescription(desc) {
+      const m = /^Vibemusic\s*·\s*«([\s\S]+?)»(?:\s*·\s*([\s\S]+))?$/.exec(String(desc || "").trim());
+      if (!m || !m[1].trim()) return null;
+      return { prompt: m[1].trim(), understood: (m[2] || "").trim() };
+    },
+
+    // Etiqueta corta para un chip de historial reciente (corta en palabra entera si supera max).
+    shortChipLabel(text, max = 28) {
+      const t = String(text || "").replace(/\s+/g, " ").trim();
+      if (t.length <= max) return t;
+      return t.slice(0, max - 1).replace(/\s+\S*$/, "") + "…";
+    },
+
+    // Últimos prompts únicos del historial (ordenados del más reciente al más antiguo).
+    recentPrompts(historyObj, limit = 5) {
+      if (!historyObj || typeof historyObj !== "object") return [];
+      const entries = Object.entries(historyObj)
+        .filter(([, v]) => v && typeof v.prompt === "string" && v.prompt.trim())
+        .sort((a, b) => (b[1].date || 0) - (a[1].date || 0));
+      const seen = new Set(), out = [];
+      for (const [uri, v] of entries) {
+        const key = Match.normalize(v.prompt);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const prompt = v.prompt.trim();
+        out.push({ uri, prompt, label: Match.shortChipLabel(prompt), date: v.date || 0 });
+        if (out.length >= limit) break;
+      }
+      return out;
     },
 
     // Variedad: máximo de canciones por artista (sin límite si pidió solo ciertos artistas).
@@ -547,6 +594,24 @@
 
     getExcludeLibrary: () => localStorage.getItem(STORAGE_KEYS.EXCLUDE_LIBRARY) === "1",
     setExcludeLibrary: (on) => localStorage.setItem(STORAGE_KEYS.EXCLUDE_LIBRARY, on ? "1" : "0"),
+
+    // Última ejecución ("¿Retocar tu última playlist?") persistida para que no se pierda al recargar Spotify.
+    getLastRun: () => {
+      try {
+        const obj = JSON.parse(localStorage.getItem("vibemusic_last_run"));
+        if (!obj || typeof obj.text !== "string" || !Array.isArray(obj.tracks) || obj.tracks.length === 0) return null;
+        return obj;
+      } catch { return null; }
+    },
+    setLastRun: (run) => {
+      if (!run || !run.text || !Array.isArray(run.tracks)) return;
+      const clean = {
+        text: String(run.text).slice(0, 500),
+        name: String(run.name || "").slice(0, 100),
+        tracks: run.tracks.slice(0, 30).map(t => ({ name: String(t.name || ""), artist: String(t.artist || "") }))
+      };
+      localStorage.setItem("vibemusic_last_run", JSON.stringify(clean));
+    },
   };
 
   // --------------------------------------------------------------------------
@@ -628,15 +693,15 @@
   "count": número de canciones pedido o null si no lo dice (acepta números escritos: "diez" = 10),
   "genre": "género y subgénero en pocas palabras, p. ej. 'jazz modal', 'synthwave', 'hip hop boom bap'",
   "instrumental": true si quiere pistas sin voz (instrumentales, beats, música de fondo para concentrarse o estudiar sin letra), false si quiere canciones con voz, null si no queda claro,
-  "language": código ISO de 2 letras del idioma de las letras si lo exige (p. ej. "es" para "rap en español") o null,
+  "language": código ISO de 2 letras del idioma de las letras SOLO si el usuario pide explícitamente un idioma o gentilicio en su texto (p. ej. "es" para "rap en español" o "indie español"), o null si no menciona idioma. NUNCA deduzcas el idioma por el nombre o apellido del artista,
   "era": {"from": año, "to": año} si menciona época o década, o null,
   "mood": "energía/ambiente en pocas palabras, p. ej. 'agresivo, con pegada'",
   "purpose": "para qué la quiere, o null",
   "include_artists": ["artistas o productores que pide como referencia"],
   "only_artists": true SOLO si quiere canciones exclusivamente de los artistas citados ("10 de Bonobo", "solo Radiohead"); false si los cita como referencia de estilo ("tipo Bonobo", "como Tycho"),
   "exclude_artists": ["artistas que rechaza"],
-  "search_queries": ["4-6 búsquedas cortas (2-4 palabras) para el buscador de Spotify que devuelvan canciones que encajen: subgénero + palabra clave, artistas o productores de referencia, nombres de álbumes. Si quiere instrumentales, prioriza álbumes instrumentales y artistas conocidos por música sin voz del género (p. ej. 'post rock instrumental', 'Nujabes', 'jazz piano trio') en vez de canciones con voz"],
-  "summary": "resumen de 6-12 palabras en español de lo entendido"
+  "search_queries": ["4-6 búsquedas cortas (2-4 palabras) para el buscador de Spotify que devuelvan canciones que encajen: subgénero + palabra clave, artistas o productores de referencia, nombres de álbumes. NUNCA añadas un idioma o país que el usuario no haya escrito. Si quiere instrumentales, prioriza álbumes instrumentales y artistas conocidos por música sin voz del género (p. ej. 'post rock instrumental', 'Nujabes', 'jazz piano trio') en vez de canciones con voz"],
+  "summary": "título corto y natural para la playlist (3-8 palabras en español, sin coletillas técnicas como 'con voz' o 'idioma X'), p. ej. 'Clásicos de rock de los 90' o 'Indie rock español 2000s'"
 }
 No inventes restricciones que el usuario no haya expresado.`;
 
@@ -668,17 +733,18 @@ No inventes restricciones que el usuario no haya expresado.`;
 
   const AIService = {
     // Paso 1: entender la petición en lenguaje natural (temperatura 0 = determinista).
-    async parseIntent(moodText) {
+    async parseIntent(moodText, signal) {
       try {
-        return parseJSON(await this.chat(INTENT_PROMPT, moodText, 0, 2048, true)); // true = modo rápido
+        return parseJSON(await this.chat(INTENT_PROMPT, moodText, 0, 2048, true, signal)); // true = modo rápido
       } catch (err) {
+        if (err?.name === "AbortError" && signal?.aborted) throw err;
         console.warn("[Vibemusic] No se pudo interpretar la petición; uso detección local.", err);
         return null;
       }
     },
 
     // Grounding: la IA elige índices de una lista de pistas que existen en Spotify.
-    async pickFromPool(moodText, req, pool, context = "") {
+    async pickFromPool(moodText, req, pool, context = "", signal) {
       const rules = constraintRules(req);
       if (req.instrumental === true) rules.push(
         "- Pista instrumental probable: el título dice \"Instrumental\" o el álbum es una obra instrumental. Descarta las que sepas que llevan voz."
@@ -697,12 +763,12 @@ Responde ÚNICAMENTE con este JSON (i = número de la lista):
 {"picks": [{"i": 0, "year": 2004, "instrumental": true}]}
 ("year" = año de publicación ORIGINAL de la canción, no del recopilatorio o remaster).`;
       const userPrompt = `Petición original: "${moodText}"\n${context ? context + "\n" : ""}\nLista:\n${Match.compactCandidateList(pool)}`;
-      return Match.parsePicks(await this.chat(systemPrompt, userPrompt, 0.3, 2048), pool.length);
+      return Match.parsePicks(await this.chat(systemPrompt, userPrompt, 0.3, 2048, false, signal), pool.length);
     },
 
     // Respaldo y relleno: pedir títulos con las restricciones ya resueltas.
     // `exclude` = "título — artista" ya probados; `context` = versión anterior al ajustar.
-    async getRecommendations(moodText, req, askFor, exclude = [], context = "") {
+    async getRecommendations(moodText, req, askFor, exclude = [], context = "", signal) {
       const rules = constraintRules(req);
       if (req.instrumental === true) rules.push(
         "- Evita las versiones \"(Instrumental)\" de canciones con voz: muchas no existen en Spotify. Úsalas solo si sabes que están publicadas, y entonces el título DEBE incluir \"(Instrumental)\" tal como aparece en Spotify."
@@ -734,14 +800,14 @@ Responde ÚNICAMENTE con este JSON:
 
       const userPrompt = `Petición original: "${moodText}"\n${context ? context + "\n" : ""}Recomiéndame ${askFor} canciones.`;
       // ~80 tokens por canción + margen para razonar; menos tokens reservados = menos 429 por minuto.
-      return parseLLMResponse(await this.chat(systemPrompt, userPrompt, 0.7, Math.min(4096, 800 + askFor * 80)));
+      return parseLLMResponse(await this.chat(systemPrompt, userPrompt, 0.7, Math.min(4096, 800 + askFor * 80), false, signal));
     },
 
     // Prueba el proveedor principal y, si falla, los demás configurados. Devuelve el texto.
     // maxTokens: tope de la respuesta. Sin él, OpenRouter reserva el máximo del modelo (32 768)
     // contra el saldo y rechaza la petición aunque la respuesta real sea corta (prueba E2E 2026-11-14).
     // ponytail: 2048-4096 deja margen a modelos que "razonan" (gpt-oss) y cabe en saldos pequeños.
-    async chat(systemPrompt, userPrompt, temperature, maxTokens = 2048, fast = false) {
+    async chat(systemPrompt, userPrompt, temperature, maxTokens = 2048, fast = false, signal) {
       const chain = providerChain(Config.getPrimary(), Config.isConfigured);
       if (chain.length === 0) {
         throw new Error("No has configurado ningún proveedor de IA. Ve a '⚙️ Ajustes de API'.");
@@ -752,11 +818,12 @@ Responde ÚNICAMENTE con este JSON:
       const usable = chain.filter(id => !resting(id));
       const errors = [];
       for (const id of (usable.length ? usable : chain)) {
+        if (signal?.aborted) throw new DOMException("Cancelado", "AbortError");
         const p = PROVIDERS[id];
         const call = jsonMode => this.callProvider(
           `${Config.getBaseUrl(id)}/chat/completions`, Config.getKey(id), Config.getModel(id),
           systemPrompt, userPrompt, temperature, p.headers || {}, jsonMode, maxTokens,
-          (fast && p.fastBody) || p.extraBody);
+          (fast && p.fastBody) || p.extraBody, signal);
         try {
           try {
             const t0 = performance.now();
@@ -764,11 +831,13 @@ Responde ÚNICAMENTE con este JSON:
             console.log(`[Vibemusic] ✓ ${p.label} respondió en ${((performance.now() - t0) / 1000).toFixed(1)} s`);
             return out;
           } catch (err) {
+            if (err?.name === "AbortError" && signal?.aborted) throw err;
             // Groq con gpt-oss a veces rechaza su propia salida en modo JSON: 1 reintento sin ese modo.
             if (p.jsonMode && /failed to validate json|json_validate_failed/i.test(err.message)) return await call(false);
             throw err;
           }
         } catch (err) {
+          if (err?.name === "AbortError" && signal?.aborted) throw err;
           const rest = cooldownSeconds(err);
           if (rest) this.cooldownUntil[id] = Date.now() + rest * 1000;
           console.warn(`[Vibemusic] Falló ${p.label}${rest ? ` (descansa ${rest} s)` : ""}:`, err);
@@ -796,7 +865,7 @@ Responde ÚNICAMENTE con este JSON:
       return parseModelList(await response.json());   // (solo devuelve ids de modelos; nunca la clave)
     },
 
-    async callProvider(url, apiKey, model, systemPrompt, userPrompt, temperature, extraHeaders, jsonMode, maxTokens = 2048, extraBody = {}) {
+    async callProvider(url, apiKey, model, systemPrompt, userPrompt, temperature, extraHeaders, jsonMode, maxTokens = 2048, extraBody = {}, signal) {
       const body = {
         model,
         messages: [
@@ -810,10 +879,13 @@ Responde ÚNICAMENTE con este JSON:
       if (jsonMode) body.response_format = { type: "json_object" };
 
       // 45 s como máximo (en vivo, gemini-3.8-flash se quedaba "pensando" más de 25 s sin responder).
+      // Si el usuario pulsa "⏹ Cancelar", signal aborta al instante.
+      const timeoutSig = AbortSignal.timeout(45000);
+      const combinedSig = signal && AbortSignal.any ? AbortSignal.any([timeoutSig, signal]) : (signal || timeoutSig);
       let response;
       try {
         response = await fetch(url, {
-        signal: AbortSignal.timeout(45000),
+        signal: combinedSig,
         method: "POST",
         headers: {
           ...(apiKey ? { "Authorization": `Bearer ${apiKey}` } : {}),
@@ -823,6 +895,7 @@ Responde ÚNICAMENTE con este JSON:
         body: JSON.stringify(body)
         });
       } catch (err) {
+        if (signal?.aborted) throw new DOMException("Cancelado", "AbortError");
         if (err?.name === "TimeoutError") throw new Error("no respondió en 45 s (prueba otro modelo más rápido)");
         throw new Error(`sin conexión con el proveedor (${Match.redactSecrets(err?.message || err)})`);
       }
@@ -1059,7 +1132,8 @@ Responde ÚNICAMENTE con este JSON:
   // --------------------------------------------------------------------------
   const REFILL_ROUNDS = 2;
 
-  async function buildTrackList(text, ui, status, context = "") {
+  async function buildTrackList(text, ui, status, context = "", signal) {
+    const checkAbort = () => { if (signal?.aborted) throw new DOMException("Cancelado", "AbortError"); };
     // Cronómetro por fases: cada lap() imprime cuánto tardó la fase anterior y el total.
     const tStart = performance.now(); let tLast = tStart;
     const lap = label => {
@@ -1067,7 +1141,8 @@ Responde ÚNICAMENTE con este JSON:
       console.log(`[Vibemusic] ⏱️ ${label}: ${((now - tLast) / 1000).toFixed(1)} s (total ${((now - tStart) / 1000).toFixed(1)} s)`);
       tLast = now;
     };
-    const intent = await AIService.parseIntent(text);
+    const intent = await AIService.parseIntent(text, signal);
+    checkAbort();
     lap("interpretar petición (IA)");
     const req = Match.resolveRequest(text, intent, ui);
     const understood = `Entendido: ${Match.describe(req)}`;
@@ -1092,7 +1167,9 @@ Responde ÚNICAMENTE con este JSON:
     // 1. Grounding
     status(`🎧 ${understood}\n🗂️ Buscando candidatas reales en el catálogo de Spotify...`);
     let pool = Match.filterPool(await SpotifyService.searchPool(Match.buildSearchQueries(req)), req);
+    checkAbort();
     const inLib = await owned(pool.map(c => c.uri));
+    checkAbort();
     pool = pool.filter(c => !inLib.has(c.uri));
     lap(`buscar candidatas en Spotify (${pool.length})`);
     let grounded = false;
@@ -1100,7 +1177,8 @@ Responde ÚNICAMENTE con este JSON:
     if (pool.length >= req.count) {
       status(`🎧 ${understood}\n🎯 La IA elige entre ${pool.length} pistas reales...`);
       try {
-        const picks = await AIService.pickFromPool(text, req, pool, context);
+        const picks = await AIService.pickFromPool(text, req, pool, context, signal);
+        checkAbort();
         lap("elegir del pool (IA)");
         grounded = picks.length > 0;
         console.log(`[Vibemusic] La IA eligió ${picks.length} índices del pool de ${pool.length}`);
@@ -1128,6 +1206,7 @@ Responde ÚNICAMENTE con este JSON:
           found.push({ uri: c.uri, name: c.name, artist, coverUrl: c.coverUrl });
         }
       } catch (err) {
+        if (err?.name === "AbortError" && signal?.aborted) throw err;
         console.warn("[Vibemusic] Grounding falló; uso la búsqueda por títulos.", err);
       }
     }
@@ -1136,6 +1215,7 @@ Responde ÚNICAMENTE con este JSON:
     // 2 y 3. Títulos propuestos por la IA (respaldo) + rondas de relleno.
     const maxRounds = grounded ? REFILL_ROUNDS : 1 + REFILL_ROUNDS;
     for (let round = 0; found.length < req.count && round < maxRounds; round++) {
+      checkAbort();
       const need = req.count - found.length;
       const isRefill = grounded || round > 0;
       const refillNo = grounded ? round + 1 : round;
@@ -1145,9 +1225,11 @@ Responde ÚNICAMENTE con este JSON:
 
       let raw;
       try {
-        raw = await AIService.getRecommendations(text, req, Match.askFor(need), triedLabels, context);
+        raw = await AIService.getRecommendations(text, req, Match.askFor(need), triedLabels, context, signal);
+        checkAbort();
         lap(`ronda ${round + 1}: pedir títulos (IA)`);
       } catch (err) {
+        if (err?.name === "AbortError" && signal?.aborted) throw err;
         if (found.length === 0 && !isRefill) throw err;
         console.warn("[Vibemusic] Ronda de relleno fallida:", err);
         break;
@@ -1165,9 +1247,11 @@ Responde ÚNICAMENTE con este JSON:
       // Buscar en Spotify en paralelo (lotes de 4) y luego decidir en orden, como antes.
       const lookups = [];
       for (let k = 0; k < fresh.kept.length; k += 4) {
+        checkAbort();
         const batch = fresh.kept.slice(k, k + 4);
         lookups.push(...await Promise.all(batch.map(it => SpotifyService.findTrack(it.title, it.artist, req.instrumental))));
       }
+      checkAbort();
       for (const [idx, item] of fresh.kept.entries()) {
         if (found.length >= req.count) break;
         markTried(item.title, item.artist);
@@ -1201,8 +1285,8 @@ Responde ÚNICAMENTE con este JSON:
   // --------------------------------------------------------------------------
   // PASO 6: Interfaz Gráfica con Controles de Curaduría y Pestañas
   // --------------------------------------------------------------------------
-  // Última playlist creada (solo en memoria; se pierde al recargar Spotify).
-  let lastRun = null;
+  // Última playlist creada (se recupera de localStorage para poder retocarla aunque reinicies Spotify).
+  let lastRun = Config.getLastRun();
 
   const UI = {
     // Ventana con el prompt completo de una playlist de Vibemusic. Todo con textContent (texto del usuario).
@@ -1518,6 +1602,7 @@ Responde ÚNICAMENTE con este JSON:
             placeholder="Describe lo que quieres escuchar con tus palabras. Ctrl+Enter para crear."
           ></textarea>
           <div class="mood-ai-chips" id="mood-ai-chips"></div>
+          <div class="mood-ai-chips" id="mood-ai-recent" style="display:none;align-items:center;"></div>
           <div class="mood-ai-hint" id="mood-ai-inline-msg" style="color:#e9a14a;display:none;"></div>
 
           <!-- Filtros -->
@@ -1786,6 +1871,32 @@ Responde ÚNICAMENTE con este JSON:
         chip.onclick = () => { inputPrompt.value = ex.prompt; inlineMsg.style.display = "none"; inputPrompt.focus(); };
         chips.appendChild(chip);
       }
+
+      // 🕘 Recientes: hasta 5 últimos prompts únicos del usuario (solo si ya creó alguna lista).
+      const recentBox = content.querySelector("#mood-ai-recent");
+      const renderRecent = () => {
+        recentBox.replaceChildren();
+        const recents = Match.recentPrompts(History.all(), 5);
+        if (recents.length === 0) {
+          recentBox.style.display = "none";
+          return;
+        }
+        recentBox.style.display = "flex";
+        const tag = document.createElement("span");
+        tag.className = "mood-ai-hint";
+        tag.textContent = "🕘 Recientes:";
+        recentBox.appendChild(tag);
+        for (const r of recents) {
+          const chip = document.createElement("button");
+          chip.className = "mood-ai-chip";
+          chip.textContent = r.label;                // siempre textContent (texto guardado en localStorage)
+          chip.title = r.prompt;
+          chip.onclick = () => { inputPrompt.value = r.prompt; inlineMsg.style.display = "none"; inputPrompt.focus(); };
+          recentBox.appendChild(chip);
+        }
+      };
+      renderRecent();
+
       // Ctrl+Enter (o Cmd+Enter en Mac) = crear, sin quitar las manos del teclado.
       inputPrompt.onkeydown = e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); btnGenerate.onclick(); } };
 
@@ -1799,10 +1910,25 @@ Responde ÚNICAMENTE con este JSON:
       };
       showRefine();
 
+      let activeAbort = null;
+      const setBtnGenerateDefault = () => {
+        btnGenerate.replaceChildren();
+        const icon = document.createElement("span");
+        icon.textContent = "▶";
+        btnGenerate.append(icon, " Crear y reproducir playlist");
+        btnGenerate.style.backgroundColor = "#1db954";
+        btnGenerate.style.color = "#000000";
+      };
+
       // text = lo que se interpreta; nameText = nombre de la playlist; context = versión anterior.
       const run = async (text, nameText, context = "") => {
-        btnGenerate.disabled = btnRefine.disabled = true;
-        btnGenerate.style.opacity = btnRefine.style.opacity = "0.6";
+        const ctrl = new AbortController();
+        activeAbort = ctrl;
+        btnGenerate.textContent = "⏹ Cancelar";
+        btnGenerate.style.backgroundColor = "#3e3e3e";
+        btnGenerate.style.color = "#ffffff";
+        btnRefine.disabled = true;
+        btnRefine.style.opacity = "0.6";
         statusDiv.style.display = "block";
         statusDiv.style.color = "#b3b3b3";
         const status = msg => { statusDiv.style.color = "#b3b3b3"; statusDiv.textContent = msg; };
@@ -1815,8 +1941,9 @@ Responde ÚNICAMENTE con este JSON:
             count: Number(countSelect.value),
             trackType: typeSelect.value,
             excludeLibrary: libraryCheck.checked
-          }, status, context);
+          }, status, context, ctrl.signal);
 
+          if (ctrl.signal.aborted) throw new DOMException("Cancelado", "AbortError");
           const requested = req.count;
           if (found.length === 0) {
             UI.renderReport(statusDiv, `${understood}\n⚠️ Ninguna sugerencia coincidió con Spotify. Prueba otros términos.`, rejected);
@@ -1828,9 +1955,11 @@ Responde ÚNICAMENTE con este JSON:
           // Nombre: el resumen que hizo la IA; al "Ajustar", el texto del ajuste.
           const result = await SpotifyService.produceAndNavigatePlaylist(context ? nameText : (req.summary || nameText), found);
           lastRun = { text, name: result.name, tracks: found };
+          Config.setLastRun(lastRun);
           // La descripción lleva el prompt: SOLO si la playlist quedó privada (privacidad del usuario).
           if (result.uri && result.isPrivate) {
             History.save(result.uri, { prompt: text, understood, count: found.length, date: Date.now() });
+            renderRecent();
             // El nombre va recortado; el prompt completo queda en la descripción (verificado en vivo:
             // PlaylistAPI.updateDetails(uri, { description }) funciona en Spotify 1.2.95).
             try {
@@ -1850,18 +1979,30 @@ Responde ÚNICAMENTE con este JSON:
             UI.renderReport(statusDiv, `${understood}\n⚠️ ${result.added < requested ? "Lista incompleta. " : ""}${summary}${privacy}`, rejected);
           }
         } catch (error) {
+          if (error?.name === "AbortError" || ctrl.signal.aborted) {
+            statusDiv.style.display = "block";
+            statusDiv.style.color = "#b3b3b3";
+            statusDiv.textContent = "⏹ Generación cancelada.";
+            return;
+          }
           console.error("[Vibemusic] Error en el flujo:", error);
           statusDiv.style.display = "block";
           statusDiv.style.color = "#e91429";
           const where = phase === "crear" ? "🎵 Al crear la playlist en Spotify" : "🧠 Al buscar canciones";
           statusDiv.textContent = `❌ ${where}: ${error.message}`;
         } finally {
-          btnGenerate.disabled = btnRefine.disabled = false;
-          btnGenerate.style.opacity = btnRefine.style.opacity = "1";
+          activeAbort = null;
+          setBtnGenerateDefault();
+          btnRefine.disabled = false;
+          btnRefine.style.opacity = "1";
         }
       };
 
       btnGenerate.onclick = () => {
+        if (activeAbort) {
+          activeAbort.abort();
+          return;
+        }
         const text = inputPrompt.value.trim();
         if (!text) {
           // Aviso dentro del modal en vez de alert(), que bloquea toda la ventana de Spotify.
@@ -1930,11 +2071,24 @@ Responde ÚNICAMENTE con este JSON:
         (uris) => uris.length === 1 && !!Match.uriKind(uris[0])
       ).register();
 
-      // Solo aparece en playlists creadas por Vibemusic (las que están en el historial de este equipo).
+      // Muestra el prompt de una playlist de Vibemusic: primero busca en el historial local y, si no
+      // está (otro PC o caché borrada), lo recupera de la descripción de la playlist en Spotify.
       new Spicetify.ContextMenu.Item(
         "Vibemusic: mostrar prompt de la lista",
-        (uris) => { const entry = History.get(uris[0]); if (entry) UI.showPrompt(entry); },
-        (uris) => uris.length === 1 && Match.uriKind(uris[0]) === "playlist" && !!History.get(uris[0])
+        async (uris) => {
+          const uri = uris[0];
+          let entry = History.get(uri);
+          if (!entry) {
+            try {
+              const meta = await Spicetify.Platform?.PlaylistAPI?.getMetadata?.(uri);
+              const parsed = Match.parsePlaylistDescription(meta?.description);
+              if (parsed) entry = { ...parsed, count: meta?.totalLength || null, date: null };
+            } catch (err) { console.warn("[Vibemusic] getMetadata falló:", err); }
+          }
+          if (entry) UI.showPrompt(entry);
+          else Spicetify.showNotification("ℹ️ Esta playlist no tiene un prompt guardado por Vibemusic");
+        },
+        (uris) => uris.length === 1 && Match.uriKind(uris[0]) === "playlist"
       ).register();
     } catch (err) {
       console.warn("[Vibemusic] No se pudo registrar el menú contextual:", err);
