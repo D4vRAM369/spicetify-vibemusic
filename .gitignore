@@ -1,0 +1,15 @@
+# Documentación interna de aprendizaje (Chronicler): no se publica
+docs/
+
+# Estado y registros de herramientas de IA y del sistema
+.omc/
+.omx/
+.agents/
+.codex/
+.aws/
+.claude/
+*.log
+
+# Varios
+node_modules/
+.DS_Store

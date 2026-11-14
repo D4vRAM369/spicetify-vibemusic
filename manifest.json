@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Vibemusic",
+    "description": "Describe lo que quieres escuchar con tus palabras y crea una playlist privada con canciones reales del catálogo. IA gratuita (Gemini, Groq, OpenRouter o compatible con OpenAI).",
+    "preview": "preview.png",
+    "main": "vibemusic.js",
+    "readme": "README.md",
+    "authors": [
+      { "name": "D4vRAM369", "url": "https://github.com/D4vRAM369" }
+    ],
+    "tags": ["playlist", "ai", "natural language", "discovery"]
+  }
+]
