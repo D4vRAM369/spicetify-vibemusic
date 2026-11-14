@@ -160,9 +160,9 @@ test("versiones alternativas: al final del pool y penalizadas al emparejar, salv
 });
 
 test("variedad: 2 por artista, sin límite si pide solo ciertos artistas", () => {
-  const tipo = Match.resolveRequest("electrónica tipo Bonobo o Tycho", { include_artists: ["Bonobo", "Tycho"], only_artists: false }, { count: 10 });
+  const tipo = Match.resolveRequest("electrónica tipo Bonobo o Tycho", { include_artists: ["Bonobo", "Tycho"] }, { count: 10 });
   assert.equal(Match.artistCap(tipo), 2);
-  const solo = Match.resolveRequest("10 canciones de Bonobo", { include_artists: ["Bonobo"], only_artists: true }, { count: 10 });
+  const solo = Match.resolveRequest("10 canciones de Bonobo", { include_artists: ["Bonobo"] }, { count: 10 });
   assert.equal(Match.artistCap(solo), Infinity);
   assert.equal(Match.artistCap(Match.resolveRequest("x", { only_artists: true }, { count: 10 })), 2); // sin artistas citados no cuenta
   assert.equal(Match.artistCap(Match.resolveRequest("x", null, { count: 30 })), 3);
@@ -175,10 +175,14 @@ test("parsePicks lee el año declarado y descarta años imposibles", () => {
 });
 
 // Caso real (Groq declaraba años erróneos): pedido 2000-2009 y salían grupos de 2023.
-test("consultas de búsqueda: la época pedida se añade como filtro year: de Spotify", () => {
+test("consultas de búsqueda: la época pedida se añade como filtro year: de Spotify y divide rangos largos", () => {
   assert.deepEqual(
     Match.buildSearchQueries({ genre: "indie rock español", searchQueries: ["Los Planetas"], range: { from: 2000, to: 2009 } }),
     ["Los Planetas year:2000-2009", "indie rock español year:2000-2009"]);
+  assert.deepEqual(
+    Match.buildSearchQueries({ count: 30, genre: "rap", searchQueries: ["rap clasico"], range: { from: 2006, to: 2014 } }),
+    ["rap clasico year:2006-2014", "rap year:2006-2014", "rap year:2006-2010", "rap year:2011-2014"]);
+  assert.deepEqual(Match.interleaveLists([["a1", "a2"], ["b1"], ["c1", "c2"]]), ["a1", "b1", "c1", "a2", "c2"]);
   assert.deepEqual(Match.buildSearchQueries({ genre: "jazz", range: null }), ["jazz"]);
 });
 

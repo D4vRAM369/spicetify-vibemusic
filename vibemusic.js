@@ -112,6 +112,10 @@
         .trim();
     },
 
+    // Palabras que indican que un artista se cita como referencia de estilo ("tipo Bonobo"), no para
+    // escuchar solo canciones suyas ("temazos de X", "20 canciones de X").
+    STYLE_REF: /\b(tipo|como|estilo|parecid[oa]s?|similar(?:es)?|en\s+la\s+l[ií]nea|rollo|onda)\b/i,
+
     // Une lo que entendió la IA (intent) con los filtros del modal.
     // Prioridad: filtro explícito del modal > lo dicho en el texto > valor por defecto.
     resolveRequest(text, intent, ui) {
@@ -126,6 +130,8 @@
         : typeof i.instrumental === "boolean" ? i.instrumental : null;
       const list = v => (Array.isArray(v) ? v.filter(x => typeof x === "string" && x.trim()) : []);
       const hasLang = Match.MENTIONS_LANGUAGE.test(String(text || ""));
+      const includeArtists = list(i.include_artists);
+      const explicitOnly = i.only_artists === true || (includeArtists.length > 0 && /\bde\s+\S+/i.test(String(text || "")) && !Match.STYLE_REF.test(String(text || "")) && i.only_artists !== false);
       return {
         count,
         askFor: Match.askFor(count),
@@ -135,10 +141,10 @@
         genre: typeof i.genre === "string" ? i.genre : "",
         mood: typeof i.mood === "string" ? i.mood : "",
         purpose: typeof i.purpose === "string" ? i.purpose : "",
-        includeArtists: list(i.include_artists),
+        includeArtists,
         excludeArtists: list(i.exclude_artists),
         searchQueries: list(i.search_queries).slice(0, 6),
-        onlyArtists: i.only_artists === true && list(i.include_artists).length > 0,
+        onlyArtists: explicitOnly && includeArtists.length > 0,
         // Versiones alternativas (demo, acústica, directo, remix...) solo si el texto las pide.
         allowVersions: Match.ALT_VERSION.test(String(text || "")),
         summary: typeof i.summary === "string" ? Match.cleanSummary(i.summary) : ""
@@ -251,6 +257,19 @@
 
     // ---- Grounding: la IA elige entre pistas REALES del catálogo ----
 
+    // Intercala resultados de varias búsquedas (1.ª de cada consulta, luego 2.ª de cada una...) para que
+    // las primeras consultas no acaparen todo el tope del pool y se pierdan las demás.
+    interleaveLists(lists) {
+      const out = [];
+      const maxLen = Math.max(0, ...(lists || []).map(l => (l ? l.length : 0)));
+      for (let i = 0; i < maxLen; i++) {
+        for (const l of lists || []) {
+          if (l && i < l.length) out.push(l[i]);
+        }
+      }
+      return out;
+    },
+
     // Consultas para el buscador de Spotify: género primero, luego las de la IA, luego artistas.
     buildSearchQueries(req, max = 6) {
       const out = [], seen = new Set();
@@ -264,11 +283,20 @@
       (req.searchQueries || []).forEach(add);
       for (const a of req.includeArtists || []) add(inst ? `${a} instrumental` : a);
       if (req.genre) add(inst ? `${req.genre} instrumental` : req.genre);
+      if (!req.range) return out;
       // Época pedida → filtro del buscador de Spotify (verificado en vivo: "year:2000-2009" funciona
       // en la búsqueda interna). Garantiza la época en el pool sin depender de que la IA sepa años.
-      // ponytail: filtra por año del ÁLBUM; un tema de 2004 en un recopilatorio de 2015 no entra,
-      // pero el original sí. Las rondas por título (findTrack) no usan el filtro.
-      return req.range ? out.map(q => `${q} year:${req.range.from}-${req.range.to}`) : out;
+      const { from, to } = req.range;
+      const ranged = out.map(q => `${q} year:${from}-${to}`);
+      // En rangos amplios (≥ 4 años) y listas medianas/grandes, Spotify ordena por popularidad actual y
+      // entierra los primeros años del rango (caso real: "rap de 2006 a 2014" solo traía 2010-2014).
+      // Añadimos sub-búsquedas de la primera mitad y la segunda mitad para garantizar cobertura real.
+      if (to - from >= 4 && (req.count || 0) >= 15 && out.length > 0) {
+        const mid = Math.floor((from + to) / 2);
+        const base = (req.genre ? (inst ? `${req.genre} instrumental` : req.genre) : out[0]);
+        ranged.push(`${base} year:${from}-${mid}`, `${base} year:${mid + 1}-${to}`);
+      }
+      return ranged;
     },
 
     // Quita repetidos por URI y también la misma canción publicada en single y álbum.
@@ -310,9 +338,9 @@
         (c.artists || []).some(a => FILLER_ARTIST.test(a));
     },
 
-    // ponytail: 60 candidatas (~1 000 tokens) caben en el límite gratuito de Groq (8 000 tokens/min);
-    // con 100 solo cabían ~2 peticiones por minuto (medido en vivo).
-    filterPool(pool, req, max = 60) {
+    // ponytail: 60 candidatas por defecto (~1 000 tokens); si piden 25-30 canciones sube hasta 90
+    // para que tras el tope de variedad por artista y época no se quede corto en ~11 canciones.
+    filterPool(pool, req, max = Math.max(60, (req?.count || 10) * 3)) {
       const INST = /instrumental|\binst\b/i;
       const excluded = (req.excludeArtists || []).map(a => Match.normalize(a)).filter(Boolean);
       const ok = Match.dedupeCandidates(pool).filter(c =>
@@ -710,7 +738,9 @@ No inventes restricciones que el usuario no haya expresado.`;
   function constraintRules(req) {
     const rules = [];
     if (req.genre) rules.push(`- Género: ${req.genre}. Nada de otros géneros.`);
-    if (req.range) rules.push(`- Época: publicadas originalmente entre ${req.range.from} y ${req.range.to}.`);
+    if (req.range) rules.push(
+      `- Época: publicadas originalmente entre ${req.range.from} y ${req.range.to}. Reparte la selección por todo el tramo (incluye tanto canciones de los primeros años cerca de ${req.range.from} como de los últimos cerca de ${req.range.to}).`
+    );
     if (req.instrumental === true) rules.push(
       "- SOLO pistas SIN VOZ. Prioriza obras instrumentales originales (álbumes instrumentales, bandas sonoras, artistas instrumentales del género) frente a versiones instrumentales de canciones con voz.",
       "- PROHIBIDO cualquier canción con rap o voz cantada. Marca \"instrumental\": true solo si lo es de verdad."
@@ -764,7 +794,7 @@ Responde ÚNICAMENTE con este JSON (i = número de la lista):
 {"picks": [{"i": 0, "year": 2004, "instrumental": true}]}
 ("year" = año de publicación ORIGINAL de la canción, no del recopilatorio o remaster).`;
       const userPrompt = `Petición original: "${moodText}"\n${context ? context + "\n" : ""}\nLista:\n${Match.compactCandidateList(pool)}`;
-      return Match.parsePicks(await this.chat(systemPrompt, userPrompt, 0.3, 2048, false, signal), pool.length);
+      return Match.parsePicks(await this.chat(systemPrompt, userPrompt, 0.3, 4096, false, signal), pool.length);
     },
 
     // Respaldo y relleno: pedir títulos con las restricciones ya resueltas.
@@ -982,17 +1012,18 @@ Responde ÚNICAMENTE con este JSON:
       // ponytail: 6 consultas simultáneas como máximo; si Spotify limita, hacer lotes de 3.
       const results = await Promise.all(queries.map(async q => {
         try {
-          // 20 por consulta (6 consultas ≈ 120 candidatas); el tope real lo pone Match.filterPool.
+          // 35 por consulta para que al pedir 20-30 canciones haya suficiente variedad tras deduplicar.
           const res = await Spicetify.GraphQL.Request(searchTracksDef(),
-            { searchTerm: q, offset: 0, limit: 20, numberOfTopResults: 5, includePreReleases: false, includeAlbumPreReleases: false });
+            { searchTerm: q, offset: 0, limit: 35, numberOfTopResults: 5, includePreReleases: false, includeAlbumPreReleases: false });
           return this.extractCandidates(res);
         } catch (err) {
           console.warn(`[Vibemusic] Error buscando "${q}":`, err);
           return [];
         }
       }));
-      // flat() mantiene el orden de las consultas: las primeras (más concretas) siguen delante.
-      return Match.dedupeCandidates(results.flat());
+      // Intercalamos (round-robin) para que todas las consultas —incluidas las de primera mitad de época
+      // y género— aporten sus mejores pistas antes del corte de filterPool.
+      return Match.dedupeCandidates(Match.interleaveLists(results));
     },
 
     // URIs que ya están en la biblioteca del usuario (Me gusta / guardadas).
@@ -1174,8 +1205,9 @@ Responde ÚNICAMENTE con este JSON:
     pool = pool.filter(c => !inLib.has(c.uri));
     lap(`buscar candidatas en Spotify (${pool.length})`);
     let grounded = false;
-    // ponytail: umbral = cantidad pedida; con menos, la IA no tiene de dónde elegir y usamos títulos.
-    if (pool.length >= req.count) {
+    // 1. Grounding: usamos el pool real siempre que tenga candidatas (antes exigía pool.length >= req.count,
+    // lo que hacía que al pedir 20 canciones con un pool de 16 se descartaran las 16 reales y salieran solo 11).
+    if (pool.length > 0) {
       status(`🎧 ${understood}\n🎯 La IA elige entre ${pool.length} pistas reales...`);
       try {
         const picks = await AIService.pickFromPool(text, req, pool, context, signal);
